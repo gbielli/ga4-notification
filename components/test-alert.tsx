@@ -44,17 +44,22 @@ export default function TestAlertsPanel() {
       const response = await fetch("/api/ga4-alerts?test=true");
 
       if (!response.ok) {
-        const errorText = await response.text(); // Try to get error details from the server
+        const errorText = await response.text();
         throw new Error(
           `Erreur: ${response.status} ${response.statusText} - ${errorText}`
         );
       }
 
-      const data: ResultData = await response.json(); // Type the response data
+      const data: ResultData = await response.json();
       setResult(data);
-    } catch (err: any) {
-      setError(err.message || "Une erreur est survenue");
-      console.error("Error fetching alerts:", err); // Log the full error for debugging
+    } catch (err: unknown) {
+      // Corrected type here!
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Une erreur est survenue");
+        console.error("An unknown error occurred:", err); // Log the unknown error
+      }
     } finally {
       setLoading(false);
     }
@@ -138,17 +143,22 @@ export default function TestAlertsPanel() {
             {result.alerts.length > 0 && (
               <div className="space-y-3 mt-4">
                 <h3 className="text-md font-medium">Alertes détectées:</h3>
-                {result.alerts.map((alert: any, index: any) => (
-                  <div
-                    key={index}
-                    className="rounded-md border border-destructive/50 p-3"
-                  >
-                    <h4 className="font-medium text-destructive">
-                      {alert.message}
-                    </h4>
-                    {renderAlertDetails(alert)}
-                  </div>
-                ))}
+                {result.alerts.map(
+                  (
+                    alert,
+                    index // Key change: Type the alert!
+                  ) => (
+                    <div
+                      key={index}
+                      className="rounded-md border border-destructive/50 p-3"
+                    >
+                      <h4 className="font-medium text-destructive">
+                        {alert.message}
+                      </h4>
+                      {renderAlertDetails(alert)}
+                    </div>
+                  )
+                )}
               </div>
             )}
           </div>
