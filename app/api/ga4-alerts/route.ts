@@ -434,7 +434,7 @@ async function sendAlertEmail(alerts: Alert[]): Promise<boolean> {
   const emailTo = process.env.ALERT_EMAIL || "guillaume.bielli@gmail.com";
 
   // Construire le contenu HTML de l'email
-  let alertContent = alerts
+  const alertContent = alerts
     .map((alert) => {
       let details = "";
 

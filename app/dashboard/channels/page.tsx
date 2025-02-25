@@ -191,21 +191,6 @@ export default function ChannelAnalysisDashboard() {
     });
   };
 
-  // Préparation des données pour le graphique en camembert
-  const preparePieData = (): Array<{
-    name: string;
-    value: number;
-    fill: string;
-  }> => {
-    if (!data?.data?.byChannel) return [];
-
-    return Object.entries(data.data.byChannel).map(([channel, info]) => ({
-      name: channel,
-      value: info.total,
-      fill: `var(--color-${channel.replace(/\s+/g, "-").toLowerCase()})`,
-    }));
-  };
-
   // Calcul des statistiques pour la période
   const stats = useMemo<StatsType>(() => {
     if (!data?.data?.byDate || !data?.data?.byChannel) {
