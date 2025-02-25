@@ -1,4 +1,3 @@
-// app/dashboard/channel-analysis/page.tsx
 "use client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -43,6 +42,68 @@ import {
   YAxis,
 } from "recharts";
 
+// Définir des interfaces pour nos types de données
+interface ChannelInfo {
+  total: number;
+  dates: Record<string, number>;
+}
+
+interface DayChannels {
+  [key: string]: number;
+}
+
+interface DayData {
+  date: string;
+  total: number;
+  channels: DayChannels;
+}
+
+interface ApiData {
+  byDate: DayData[];
+  byChannel: Record<string, ChannelInfo>;
+  unassigned: Array<{
+    date: string;
+    sessions: number;
+    users: number;
+    percentage: number;
+  }>;
+}
+
+interface ApiResponse {
+  data: ApiData;
+  alerts: Array<{
+    date: string;
+    message: string;
+    level: string;
+  }>;
+  rawData: unknown;
+}
+
+interface StatsType {
+  totalSessions: number;
+  organicPercentage: number;
+  directPercentage: number;
+  referralPercentage: number;
+  topDay: { date: string; sessions: number };
+}
+
+interface TrendResult {
+  value: string | number;
+  isUp: boolean;
+}
+
+interface PieDataItem {
+  channel: string;
+  sessions: number;
+  fill: string;
+}
+
+interface TrendDataItem {
+  date: string;
+  total: number;
+  [key: string]: number | string;
+}
+
 // Configuration du graphique avec les couleurs thématiques
 const chartConfig = {
   total: {
@@ -68,7 +129,7 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export default function ChannelAnalysisDashboard() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,12 +143,14 @@ export default function ChannelAnalysisDashboard() {
         throw new Error(`Erreur: ${response.status}`);
       }
 
-      const result = await response.json();
+      const result: ApiResponse = await response.json();
       setData(result);
       setError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Erreur lors de la récupération des données:", err);
-      setError(err.message);
+      const errorMessage =
+        err instanceof Error ? err.message : "Une erreur inconnue est survenue";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -98,11 +161,11 @@ export default function ChannelAnalysisDashboard() {
   }, []);
 
   // Préparation des données pour le graphique de tendance avec remplacement des zéros
-  const prepareTrendData = () => {
+  const prepareTrendData = (): TrendDataItem[] => {
     if (!data?.data?.byDate) return [];
 
-    return data.data.byDate.map((day: any) => {
-      const result: any = {
+    return data.data.byDate.map((day) => {
+      const result: TrendDataItem = {
         date: day.date,
         total: day.total,
       };
@@ -117,7 +180,7 @@ export default function ChannelAnalysisDashboard() {
         }
       });
 
-      // Si un canal est complètement absent, l ajouter avec une valeur aléatoire
+      // Si un canal est complètement absent, l&apos;ajouter avec une valeur aléatoire
       ["Organic Search", "Direct", "Referral"].forEach((channel) => {
         if (result[channel] === undefined) {
           result[channel] = Math.floor(Math.random() * 10) + 1; // Valeur entre 1 et 10
@@ -129,20 +192,22 @@ export default function ChannelAnalysisDashboard() {
   };
 
   // Préparation des données pour le graphique en camembert
-  const preparePieData = () => {
+  const preparePieData = (): Array<{
+    name: string;
+    value: number;
+    fill: string;
+  }> => {
     if (!data?.data?.byChannel) return [];
 
-    return Object.entries(data.data.byChannel).map(
-      ([channel, info]: [string, any]) => ({
-        name: channel,
-        value: info.total,
-        fill: `var(--color-${channel.replace(/\s+/g, "-").toLowerCase()})`,
-      })
-    );
+    return Object.entries(data.data.byChannel).map(([channel, info]) => ({
+      name: channel,
+      value: info.total,
+      fill: `var(--color-${channel.replace(/\s+/g, "-").toLowerCase()})`,
+    }));
   };
 
   // Calcul des statistiques pour la période
-  const stats = useMemo(() => {
+  const stats = useMemo<StatsType>(() => {
     if (!data?.data?.byDate || !data?.data?.byChannel) {
       return {
         totalSessions: 0,
@@ -155,13 +220,13 @@ export default function ChannelAnalysisDashboard() {
 
     // Total des sessions
     const totalSessions = Object.values(data.data.byChannel).reduce(
-      (sum: number, channel: any) => sum + channel.total,
+      (sum, channel) => sum + channel.total,
       0
     );
 
     // Jour avec le plus de sessions
     const topDay = data.data.byDate.reduce(
-      (max: any, day: any) =>
+      (max, day) =>
         day.total > max.sessions
           ? { date: day.date, sessions: day.total }
           : max,
@@ -183,29 +248,27 @@ export default function ChannelAnalysisDashboard() {
   }, [data]);
 
   // Préparation des données pour le donut chart
-  const pieData = useMemo(() => {
+  const pieData = useMemo<PieDataItem[]>(() => {
     if (!data?.data?.byChannel) return [];
 
-    return Object.entries(data.data.byChannel).map(
-      ([channel, info]: [string, any]) => {
-        // Déterminer la variable de couleur en fonction du canal
-        let colorVar = "--chart-5"; // Couleur par défaut (other)
+    return Object.entries(data.data.byChannel).map(([channel, info]) => {
+      // Déterminer la variable de couleur en fonction du canal
+      let colorVar = "--chart-5"; // Couleur par défaut (other)
 
-        if (channel === "Organic Search") colorVar = "--chart-2";
-        else if (channel === "Direct") colorVar = "--chart-3";
-        else if (channel === "Referral") colorVar = "--chart-4";
+      if (channel === "Organic Search") colorVar = "--chart-2";
+      else if (channel === "Direct") colorVar = "--chart-3";
+      else if (channel === "Referral") colorVar = "--chart-4";
 
-        return {
-          channel,
-          sessions: (info as any).total,
-          fill: `hsl(var(${colorVar}))`,
-        };
-      }
-    );
+      return {
+        channel,
+        sessions: info.total,
+        fill: `hsl(var(${colorVar}))`,
+      };
+    });
   }, [data]);
 
   // Calcul des tendances par rapport à la période précédente
-  const calculateTrend = () => {
+  const calculateTrend = (): TrendResult => {
     if (!data?.data?.byDate || data.data.byDate.length < 2)
       return { value: 0, isUp: true };
 
@@ -259,7 +322,9 @@ export default function ChannelAnalysisDashboard() {
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Analyse des canaux d acquisition</h1>
+        <h1 className="text-3xl font-bold">
+          Analyse des canaux d&apos;acquisition
+        </h1>
         <Button onClick={fetchData} className="flex items-center gap-2">
           <RefreshCw className="h-4 w-4" /> Actualiser
         </Button>
@@ -270,7 +335,7 @@ export default function ChannelAnalysisDashboard() {
         <Info className="h-4 w-4" />
         <AlertTitle>Bonne nouvelle!</AlertTitle>
         <AlertDescription>
-          Aucun trafic non attribué n a été détecté dans vos données. Votre
+          Aucun trafic non attribué n&apos;a été détecté dans vos données. Votre
           configuration Google Analytics fonctionne correctement.
         </AlertDescription>
       </Alert>
@@ -279,7 +344,7 @@ export default function ChannelAnalysisDashboard() {
         <Card className="flex flex-col">
           <CardHeader className="items-center pb-0">
             <CardTitle>Répartition du trafic</CardTitle>
-            <CardDescription>Par source d acquisition</CardDescription>
+            <CardDescription>Par source d&apos;acquisition</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 pb-0">
             <ChartContainer
@@ -325,6 +390,7 @@ export default function ChannelAnalysisDashboard() {
                           </text>
                         );
                       }
+                      return null;
                     }}
                   />
                 </Pie>
@@ -429,7 +495,7 @@ export default function ChannelAnalysisDashboard() {
           <TabsTrigger value="channels">Canaux</TabsTrigger>
           <TabsTrigger value="data">Données brutes</TabsTrigger>
         </TabsList>
-        // Partie à remplacer dans TabsContent avec value="trends"
+        {/* Partie à remplacer dans TabsContent avec value="trends" */}
         <TabsContent value="trends" className="pt-4">
           <Card>
             <CardHeader>
@@ -522,7 +588,7 @@ export default function ChannelAnalysisDashboard() {
             <CardHeader>
               <CardTitle>Répartition par canal</CardTitle>
               <CardDescription>
-                Détail des sessions par canal d acquisition
+                Détail des sessions par canal d&apos;acquisition
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -536,7 +602,7 @@ export default function ChannelAnalysisDashboard() {
                 </TableHeader>
                 <TableBody>
                   {Object.entries(data?.data?.byChannel || {}).map(
-                    ([channel, info]: [string, any], index: number) => {
+                    ([channel, info], index) => {
                       const percentage = (
                         (info.total / stats.totalSessions) *
                         100
@@ -603,7 +669,7 @@ export default function ChannelAnalysisDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.data?.byDate.map((day: any, index: number) => (
+                  {data?.data?.byDate.map((day, index) => (
                     <TableRow key={index}>
                       <TableCell>{day.date}</TableCell>
                       <TableCell className="text-right">{day.total}</TableCell>

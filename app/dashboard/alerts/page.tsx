@@ -44,11 +44,11 @@ export default function AlertsDashboardPage() {
         <div className="flex flex-col items-center p-6 space-y-8">
           <div className="flex flex-col items-center space-y-2 max-w-lg text-center">
             <AlertTriangle className="h-12 w-12 text-orange-500" />
-            <h1 className="text-2xl font-bold">Système d'alertes GA4</h1>
+            <h1 className="text-2xl font-bold">Système d&apos;alertes GA4</h1>
             <p className="text-muted-foreground">
               Ce système vérifie quotidiennement vos données Google Analytics
               pour détecter les anomalies dans le trafic non attribué et vous
-              envoie un email si des conditions d'alerte sont déclenchées.
+              envoie un email si des conditions d&apos;alerte sont déclenchées.
             </p>
           </div>
 

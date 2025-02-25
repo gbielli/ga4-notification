@@ -83,7 +83,7 @@ export default function TestAlertsPanel() {
       <CardHeader>
         <CardTitle>Test des alertes GA4</CardTitle>
         <CardDescription>
-          Testez le système d'alertes avec des données simulées
+          Testez le système d&apos;alertes avec des données simulées
         </CardDescription>
       </CardHeader>
       <CardContent>

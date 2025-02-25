@@ -3,6 +3,33 @@ import { OAuth2Client } from "google-auth-library";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
+// Définir les interfaces pour les données
+interface ChannelData {
+  byDate: Record<string, { total: number; channels: Record<string, number> }>;
+  byChannel: Record<string, { total: number; dates: Record<string, number> }>;
+  unassigned: Array<{
+    date: string;
+    sessions: number;
+    users: number;
+    percentage: number;
+  }>;
+}
+
+interface Alert {
+  type: string;
+  message: string;
+  [key: string]: unknown; // Pour les propriétés supplémentaires par type d'alerte
+}
+
+interface GA4ApiRow {
+  dimensionValues: Array<{ value: string }>;
+  metricValues: Array<{ value: string }>;
+}
+
+interface GA4ApiResponse {
+  rows: GA4ApiRow[];
+}
+
 // Initialiser le client Resend pour l'envoi d'emails
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -20,7 +47,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
     }
 
-    let data;
+    let data: GA4ApiResponse;
 
     if (isTestMode) {
       // Utiliser des données de test pour forcer des alertes
@@ -112,9 +139,11 @@ export async function GET(req: Request) {
         data = await response.json();
       } catch (error) {
         console.error("Erreur lors de la récupération des données GA4:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : "Erreur inconnue";
         return NextResponse.json(
           {
-            error: error.message,
+            error: errorMessage,
             message:
               "Erreur lors de la récupération des données Google Analytics",
           },
@@ -145,19 +174,21 @@ export async function GET(req: Request) {
       alerts: [],
       isTest: isTestMode,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Erreur lors de la vérification des alertes:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Erreur inconnue";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 // Générer des données de test qui déclencheront des alertes
-function generateTestData() {
+function generateTestData(): GA4ApiResponse {
   // Date d'aujourd'hui
   const today = new Date();
 
   // Créer 14 jours de données avec un pattern qui déclenche des alertes
-  const rows = [];
+  const rows: GA4ApiRow[] = [];
 
   // Pour les 7 premiers jours, trafic unassigned bas (~2%)
   for (let i = 13; i >= 7; i--) {
@@ -220,7 +251,7 @@ function generateTestData() {
 }
 
 // Formatter une date au format YYYYMMDD pour GA4
-function formatDate(date) {
+function formatDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -228,9 +259,9 @@ function formatDate(date) {
 }
 
 // Formatter les données pour l'analyse
-function formatChannelData(data: any) {
+function formatChannelData(data: GA4ApiResponse): ChannelData {
   if (!data || !data.rows) {
-    return { byDate: [], byChannel: {}, unassigned: [] };
+    return { byDate: {}, byChannel: {}, unassigned: [] };
   }
 
   // Regrouper par date
@@ -253,7 +284,7 @@ function formatChannelData(data: any) {
     percentage: number;
   }> = [];
 
-  data.rows.forEach((row: any) => {
+  data.rows.forEach((row) => {
     const channel = row.dimensionValues[0].value;
     const date = row.dimensionValues[1].value;
     const sessions = parseInt(row.metricValues[0].value);
@@ -310,8 +341,8 @@ function formatChannelData(data: any) {
 // Vérifier s'il y a une augmentation significative du trafic unassigned
 function checkForSignificantIncrease(
   unassignedData: Array<{ date: string; sessions: number; percentage: number }>
-) {
-  const alerts = [];
+): Alert[] {
+  const alerts: Alert[] = [];
 
   // S'assurer qu'il y a suffisamment de données pour l'analyse
   if (unassignedData.length < 2) {
@@ -399,7 +430,7 @@ function checkForSignificantIncrease(
 }
 
 // Envoyer un email d'alerte
-async function sendAlertEmail(alerts: any[]) {
+async function sendAlertEmail(alerts: Alert[]): Promise<boolean> {
   const emailTo = process.env.ALERT_EMAIL || "guillaume.bielli@gmail.com";
 
   // Construire le contenu HTML de l'email
@@ -408,25 +439,36 @@ async function sendAlertEmail(alerts: any[]) {
       let details = "";
 
       if (alert.type === "SIGNIFICANT_INCREASE") {
+        const dates = alert.dates as {
+          previous: { start: string; end: string };
+          current: { start: string; end: string };
+        };
+
         details = `
         <p>Une augmentation significative du trafic non attribué a été détectée :</p>
         <ul>
-          <li>Période précédente (${alert.dates.previous.start} à ${alert.dates.previous.end}): ${alert.previousAvg}%</li>
-          <li>Période actuelle (${alert.dates.current.start} à ${alert.dates.current.end}): ${alert.currentAvg}%</li>
+          <li>Période précédente (${dates.previous.start} à ${dates.previous.end}): ${alert.previousAvg}%</li>
+          <li>Période actuelle (${dates.current.start} à ${dates.current.end}): ${alert.currentAvg}%</li>
         </ul>
       `;
       } else if (alert.type === "INCREASING_TREND") {
+        const data = alert.data as Array<{ date: string; percentage: number }>;
         details = `
         <p>Tendance à la hausse sur les derniers jours :</p>
         <ul>
-          ${alert.data
-            .map((day: any) => `<li>${day.date}: ${day.percentage}%</li>`)
+          ${data
+            .map((day) => `<li>${day.date}: ${day.percentage}%</li>`)
             .join("")}
         </ul>
       `;
       } else if (alert.type === "HIGH_UNASSIGNED_DAY") {
+        const day = alert.day as {
+          date: string;
+          percentage: number;
+          sessions: number;
+        };
         details = `
-        <p>Taux élevé détecté le ${alert.day.date} avec ${alert.day.percentage}% de trafic non attribué (${alert.day.sessions} sessions)</p>
+        <p>Taux élevé détecté le ${day.date} avec ${day.percentage}% de trafic non attribué (${day.sessions} sessions)</p>
       `;
       }
 
@@ -473,7 +515,7 @@ async function sendAlertEmail(alerts: any[]) {
 
     return true;
   } catch (error) {
-    console.error("Erreur lors de l envoi de l email:", error);
+    console.error("Erreur lors de l&apos;envoi de l&apos;email:", error);
     throw error;
   }
 }
