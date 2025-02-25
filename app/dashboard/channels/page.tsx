@@ -117,7 +117,7 @@ export default function ChannelAnalysisDashboard() {
         }
       });
 
-      // Si un canal est complètement absent, l'ajouter avec une valeur aléatoire
+      // Si un canal est complètement absent, l ajouter avec une valeur aléatoire
       ["Organic Search", "Direct", "Referral"].forEach((channel) => {
         if (result[channel] === undefined) {
           result[channel] = Math.floor(Math.random() * 10) + 1; // Valeur entre 1 et 10
@@ -259,7 +259,7 @@ export default function ChannelAnalysisDashboard() {
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Analyse des canaux d'acquisition</h1>
+        <h1 className="text-3xl font-bold">Analyse des canaux d acquisition</h1>
         <Button onClick={fetchData} className="flex items-center gap-2">
           <RefreshCw className="h-4 w-4" /> Actualiser
         </Button>
@@ -270,7 +270,7 @@ export default function ChannelAnalysisDashboard() {
         <Info className="h-4 w-4" />
         <AlertTitle>Bonne nouvelle!</AlertTitle>
         <AlertDescription>
-          Aucun trafic non attribué n'a été détecté dans vos données. Votre
+          Aucun trafic non attribué n a été détecté dans vos données. Votre
           configuration Google Analytics fonctionne correctement.
         </AlertDescription>
       </Alert>
@@ -279,7 +279,7 @@ export default function ChannelAnalysisDashboard() {
         <Card className="flex flex-col">
           <CardHeader className="items-center pb-0">
             <CardTitle>Répartition du trafic</CardTitle>
-            <CardDescription>Par source d'acquisition</CardDescription>
+            <CardDescription>Par source d acquisition</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 pb-0">
             <ChartContainer
@@ -522,7 +522,7 @@ export default function ChannelAnalysisDashboard() {
             <CardHeader>
               <CardTitle>Répartition par canal</CardTitle>
               <CardDescription>
-                Détail des sessions par canal d'acquisition
+                Détail des sessions par canal d acquisition
               </CardDescription>
             </CardHeader>
             <CardContent>
