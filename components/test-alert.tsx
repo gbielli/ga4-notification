@@ -11,10 +11,29 @@ import {
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
 
+interface AlertData {
+  type: "SIGNIFICANT_INCREASE" | "INCREASING_TREND" | "HIGH_UNASSIGNED_DAY";
+  message: string;
+  dates?: {
+    previous: { start: string; end: string };
+    current: { start: string; end: string };
+  };
+  previousAvg?: number;
+  currentAvg?: number;
+  data?: { date: string; percentage: number }[];
+  day?: { date: string; percentage: number; sessions: number };
+}
+
+interface ResultData {
+  status: string;
+  isTest: boolean;
+  alerts: AlertData[];
+}
+
 export default function TestAlertsPanel() {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [result, setResult] = useState<ResultData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const testAlerts = async () => {
     setLoading(true);
@@ -25,57 +44,62 @@ export default function TestAlertsPanel() {
       const response = await fetch("/api/ga4-alerts?test=true");
 
       if (!response.ok) {
-        throw new Error(`Erreur: ${response.status} ${response.statusText}`);
+        const errorText = await response.text(); // Try to get error details from the server
+        throw new Error(
+          `Erreur: ${response.status} ${response.statusText} - ${errorText}`
+        );
       }
 
-      const data = await response.json();
+      const data: ResultData = await response.json(); // Type the response data
       setResult(data);
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message || "Une erreur est survenue");
+      console.error("Error fetching alerts:", err); // Log the full error for debugging
     } finally {
       setLoading(false);
     }
   };
 
-  const renderAlertDetails = (alert) => {
-    if (alert.type === "SIGNIFICANT_INCREASE") {
-      return (
-        <div className="mt-2 text-sm">
-          <p>
-            Période précédente ({alert.dates.previous.start} à{" "}
-            {alert.dates.previous.end}): {alert.previousAvg}%
-          </p>
-          <p>
-            Période actuelle ({alert.dates.current.start} à{" "}
-            {alert.dates.current.end}): {alert.currentAvg}%
-          </p>
-        </div>
-      );
-    } else if (alert.type === "INCREASING_TREND") {
-      return (
-        <div className="mt-2 text-sm">
-          <p>Tendance des derniers jours:</p>
-          <ul className="list-disc pl-5">
-            {alert.data.map((day, i) => (
-              <li key={i}>
-                {day.date}: {day.percentage}%
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-    } else if (alert.type === "HIGH_UNASSIGNED_DAY") {
-      return (
-        <div className="mt-2 text-sm">
-          <p>
-            Le {alert.day.date}: {alert.day.percentage}% ({alert.day.sessions}{" "}
-            sessions)
-          </p>
-        </div>
-      );
+  const renderAlertDetails = (alert: AlertData) => {
+    switch (alert.type) {
+      case "SIGNIFICANT_INCREASE":
+        return (
+          <div className="mt-2 text-sm">
+            <p>
+              Période précédente ({alert.dates?.previous.start} à{" "}
+              {alert.dates?.previous.end}): {alert.previousAvg}%
+            </p>
+            <p>
+              Période actuelle ({alert.dates?.current.start} à{" "}
+              {alert.dates?.current.end}): {alert.currentAvg}%
+            </p>
+          </div>
+        );
+      case "INCREASING_TREND":
+        return (
+          <div className="mt-2 text-sm">
+            <p>Tendance des derniers jours:</p>
+            <ul className="list-disc pl-5">
+              {alert.data?.map((day, i) => (
+                <li key={i}>
+                  {day.date}: {day.percentage}%
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      case "HIGH_UNASSIGNED_DAY":
+        return (
+          <div className="mt-2 text-sm">
+            <p>
+              Le {alert.day?.date}: {alert.day?.percentage}% (
+              {alert.day?.sessions} sessions)
+            </p>
+          </div>
+        );
+      default:
+        return null;
     }
-
-    return null;
   };
 
   return (
@@ -114,7 +138,7 @@ export default function TestAlertsPanel() {
             {result.alerts.length > 0 && (
               <div className="space-y-3 mt-4">
                 <h3 className="text-md font-medium">Alertes détectées:</h3>
-                {result.alerts.map((alert, index) => (
+                {result.alerts.map((alert: any, index: any) => (
                   <div
                     key={index}
                     className="rounded-md border border-destructive/50 p-3"
