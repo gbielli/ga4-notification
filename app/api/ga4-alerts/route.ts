@@ -3,8 +3,21 @@ import { OAuth2Client } from "google-auth-library";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
-// Initialiser le client Resend pour l'envoi d'emails
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Définir les interfaces pour les données GA4
+interface GA4Row {
+  dimensionValues: Array<{ value: string }>;
+  metricValues: Array<{ value: string }>;
+}
+
+interface GA4Data {
+  rows?: GA4Row[];
+}
+
+// Initialiser le client Resend pour l'envoi d'emails s'il y a une clé API
+let resend: Resend | null = null;
+if (process.env.RESEND_API_KEY) {
+  resend = new Resend(process.env.RESEND_API_KEY);
+}
 
 export async function GET(req: Request) {
   try {
@@ -98,11 +111,11 @@ export async function GET(req: Request) {
       }
 
       // 8. Récupérer les données
-      const data = await response.json();
+      const data: GA4Data = await response.json();
 
       // 9. Extraire les statistiques
       if (data.rows) {
-        data.rows.forEach((row) => {
+        data.rows.forEach((row: GA4Row) => {
           const channel = row.dimensionValues[0].value;
           const sessions = parseInt(row.metricValues[0].value);
 
@@ -191,25 +204,39 @@ export async function GET(req: Request) {
 
     // Envoyer l'email seulement si ce n'est pas un test ou si envoi de test explicitement demandé
     const sendTestEmail = url.searchParams.get("sendEmail") === "true";
-    if (!isTestMode || sendTestEmail) {
-      const emailTo = process.env.ALERT_EMAIL || "guillaume.bielli@gmail.com";
-      await resend.emails.send({
-        from: "hello@guillaumebielli.fr",
-        to: emailTo,
-        subject: emailSubject,
-        html: emailContent,
-      });
+    let emailSent = false;
+
+    if ((!isTestMode || sendTestEmail) && resend) {
+      try {
+        const emailTo = process.env.ALERT_EMAIL || "guillaume.bielli@gmail.com";
+        await resend.emails.send({
+          from: "hello@guillaumebielli.fr",
+          to: emailTo,
+          subject: emailSubject,
+          html: emailContent,
+        });
+        emailSent = true;
+        console.log(`Email envoyé à ${emailTo}`);
+      } catch (emailError) {
+        console.error("Erreur lors de l'envoi de l'email:", emailError);
+        // On continue le processus même si l'email échoue
+      }
+    } else if (!resend && (sendTestEmail || !isTestMode)) {
+      console.log(
+        "Aucune clé API Resend configurée, l'email n'a pas été envoyé"
+      );
     }
 
     return NextResponse.json({
       status: hasOrganic
-        ? "Rapport quotidien envoyé"
-        : "Alerte envoyée: aucun trafic organique",
+        ? `Rapport quotidien ${emailSent ? "envoyé" : "généré"}`
+        : `Alerte ${emailSent ? "envoyée" : "générée"}: aucun trafic organique`,
       data: {
         totalSessions,
         organicSessions,
         isTest: isTestMode,
-        emailSent: !isTestMode || sendTestEmail,
+        emailSent,
+        emailConfigured: !!resend,
       },
     });
   } catch (error) {
