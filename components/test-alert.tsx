@@ -11,29 +11,24 @@ import {
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
 
-interface AlertData {
-  type: "SIGNIFICANT_INCREASE" | "INCREASING_TREND" | "HIGH_UNASSIGNED_DAY";
-  message: string;
-  dates?: {
-    previous: { start: string; end: string };
-    current: { start: string; end: string };
-  };
-  previousAvg?: number;
-  currentAvg?: number;
-  data?: { date: string; percentage: number }[];
-  day?: { date: string; percentage: number; sessions: number };
-}
-
-interface ResultData {
+interface TestResult {
   status: string;
-  isTest: boolean;
-  alerts: AlertData[];
+  data: {
+    totalSessions: number;
+    organicSessions: number;
+    isTest: boolean;
+    emailSent: boolean;
+    emailConfigured: boolean;
+  };
+  error?: string;
 }
 
 export default function TestAlertsPanel() {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ResultData | null>(null);
+  const [result, setResult] = useState<TestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [simulateNoOrganic, setSimulateNoOrganic] = useState(false);
+  const [sendTestEmail, setSendTestEmail] = useState(false);
 
   const testAlerts = async () => {
     setLoading(true);
@@ -41,7 +36,9 @@ export default function TestAlertsPanel() {
     setError(null);
 
     try {
-      const response = await fetch("/api/ga4-alerts?test=true");
+      // Construire l'URL avec les paramètres de test
+      const endpoint = `/api/ga4-alerts?test=true&noOrganic=${simulateNoOrganic}&sendEmail=true`;
+      const response = await fetch(endpoint);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -50,60 +47,17 @@ export default function TestAlertsPanel() {
         );
       }
 
-      const data: ResultData = await response.json();
+      const data = await response.json();
       setResult(data);
     } catch (err: unknown) {
-      // Corrected type here!
       if (err instanceof Error) {
         setError(err.message);
       } else {
         setError("Une erreur est survenue");
-        console.error("An unknown error occurred:", err); // Log the unknown error
+        console.error("An unknown error occurred:", err);
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const renderAlertDetails = (alert: AlertData) => {
-    switch (alert.type) {
-      case "SIGNIFICANT_INCREASE":
-        return (
-          <div className="mt-2 text-sm">
-            <p>
-              Période précédente ({alert.dates?.previous.start} à{" "}
-              {alert.dates?.previous.end}): {alert.previousAvg}%
-            </p>
-            <p>
-              Période actuelle ({alert.dates?.current.start} à{" "}
-              {alert.dates?.current.end}): {alert.currentAvg}%
-            </p>
-          </div>
-        );
-      case "INCREASING_TREND":
-        return (
-          <div className="mt-2 text-sm">
-            <p>Tendance des derniers jours:</p>
-            <ul className="list-disc pl-5">
-              {alert.data?.map((day, i) => (
-                <li key={i}>
-                  {day.date}: {day.percentage}%
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      case "HIGH_UNASSIGNED_DAY":
-        return (
-          <div className="mt-2 text-sm">
-            <p>
-              Le {alert.day?.date}: {alert.day?.percentage}% (
-              {alert.day?.sessions} sessions)
-            </p>
-          </div>
-        );
-      default:
-        return null;
     }
   };
 
@@ -127,42 +81,72 @@ export default function TestAlertsPanel() {
         {result && (
           <div className="mb-4 space-y-4">
             <Alert
-              variant={result.alerts.length > 0 ? "destructive" : "default"}
+              variant={
+                result.status.includes("Alerte") ? "destructive" : "default"
+              }
             >
-              {result.alerts.length > 0 ? (
+              {result.status.includes("Alerte") ? (
                 <AlertTriangle className="h-4 w-4" />
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
               <AlertTitle>{result.status}</AlertTitle>
               <AlertDescription>
-                {result.isTest && "Test effectué avec des données simulées."}
+                <div className="mt-2 space-y-2">
+                  <p>Sessions totales: {result.data.totalSessions}</p>
+                  <p>Sessions organiques: {result.data.organicSessions}</p>
+                  {!result.data.emailConfigured && (
+                    <p className="text-amber-600 font-semibold">
+                      Aucune clé API Resend configurée, l&apos;email n&apos;a
+                      pas été envoyé.
+                    </p>
+                  )}
+                  {result.data.emailConfigured && result.data.emailSent && (
+                    <p className="text-green-600 font-semibold">
+                      Un email de test a été envoyé à l&apos;adresse configurée.
+                    </p>
+                  )}
+                  {result.data.emailConfigured &&
+                    !result.data.emailSent &&
+                    !sendTestEmail && (
+                      <p className="text-slate-500">
+                        Aucun email n&apos;a été envoyé (option non
+                        sélectionnée).
+                      </p>
+                    )}
+                </div>
               </AlertDescription>
             </Alert>
-
-            {result.alerts.length > 0 && (
-              <div className="space-y-3 mt-4">
-                <h3 className="text-md font-medium">Alertes détectées:</h3>
-                {result.alerts.map(
-                  (
-                    alert,
-                    index // Key change: Type the alert!
-                  ) => (
-                    <div
-                      key={index}
-                      className="rounded-md border border-destructive/50 p-3"
-                    >
-                      <h4 className="font-medium text-destructive">
-                        {alert.message}
-                      </h4>
-                      {renderAlertDetails(alert)}
-                    </div>
-                  )
-                )}
-              </div>
-            )}
           </div>
         )}
+
+        <div className="space-y-4 mt-4">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="no-organic"
+              checked={simulateNoOrganic}
+              onChange={(e) => setSimulateNoOrganic(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <label htmlFor="no-organic" className="text-sm">
+              Simuler l&apos;absence de trafic organique (déclenche une alerte)
+            </label>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="send-email"
+              checked={sendTestEmail}
+              onChange={(e) => setSendTestEmail(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            <label htmlFor="send-email" className="text-sm">
+              Envoyer un email de test réel
+            </label>
+          </div>
+        </div>
       </CardContent>
       <CardFooter>
         <Button onClick={testAlerts} disabled={loading} className="w-full">
