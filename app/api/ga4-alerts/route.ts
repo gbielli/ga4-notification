@@ -1,5 +1,5 @@
 // app/api/ga4-alerts/route.ts
-import { OAuth2Client } from "google-auth-library";
+import { JWT } from "google-auth-library";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
@@ -43,97 +43,100 @@ export async function GET(req: Request) {
       // Si simulateNoOrganic est true, on simule l'absence de trafic organique
       organicSessions = simulateNoOrganic ? 0 : Math.floor(totalSessions * 0.4); // 40% du trafic est organique
     } else {
-      // Mode normal: Connexion à GA4 et récupération des données réelles
-      // 1. Récupérer les credentials depuis les variables d'environnement
-      const credentials = JSON.parse(
-        process.env.GOOGLE_OAUTH2_CREDENTIALS || "{}"
-      );
-      if (!credentials.web) {
-        throw new Error("Les credentials OAuth2 sont invalides ou manquants");
-      }
+      // Mode normal: Connexion à GA4 avec le compte de service et récupération des données réelles
+      try {
+        // 1. Récupérer la configuration du compte de service depuis les variables d'environnement
+        // Attention: Assurez-vous de stocker cette valeur de façon sécurisée!
+        const serviceAccountKey = JSON.parse(
+          process.env.GOOGLE_SERVICE_ACCOUNT_KEY || "{}"
+        );
 
-      // 2. Récupérer le token depuis les variables d'environnement
-      const token = JSON.parse(process.env.GOOGLE_OAUTH2_TOKEN || "{}");
-      if (!token.refresh_token) {
-        throw new Error("Le token OAuth2 est invalide ou manquant");
-      }
-
-      // 3. Créer un client OAuth2
-      const oauth2Client = new OAuth2Client(
-        credentials.web.client_id,
-        credentials.web.client_secret,
-        "http://localhost:3001/oauth2callback"
-      );
-
-      // 4. Définir les tokens
-      oauth2Client.setCredentials(token);
-
-      // 5. Obtenir un nouveau token d'accès si nécessaire
-      const tokens = await oauth2Client.getAccessToken();
-      const accessToken = tokens.token;
-
-      // 6. ID de votre propriété GA4
-      const propertyId = process.env.GA_PROPERTY_ID || "470974790";
-
-      // 7. Requête à l'API GA4 pour obtenir les données des dernières 24 heures
-      const response = await fetch(
-        `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            dateRanges: [
-              {
-                startDate: "yesterday",
-                endDate: "yesterday",
-              },
-            ],
-            dimensions: [
-              {
-                name: "sessionDefaultChannelGroup",
-              },
-            ],
-            metrics: [
-              {
-                name: "sessions",
-              },
-            ],
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erreur API GA4 (${response.status}): ${errorText}`);
-      }
-
-      // 8. Récupérer les données
-      const data: GA4Data = await response.json();
-
-      // 9. Extraire les statistiques
-      if (data.rows) {
-        data.rows.forEach((row: GA4Row) => {
-          const channel = row.dimensionValues[0].value;
-          const sessions = parseInt(row.metricValues[0].value);
-
-          totalSessions += sessions;
-
-          if (channel === "Organic Search") {
-            organicSessions = sessions;
-          }
+        // 2. Créer un client JWT avec les identifiants du compte de service
+        const jwtClient = new JWT({
+          email: serviceAccountKey.client_email,
+          key: serviceAccountKey.private_key,
+          scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
         });
+
+        // 3. S'authentifier avec le client JWT et obtenir un token d'accès
+        const token = await jwtClient.authorize();
+        const accessToken = token.access_token;
+
+        // 4. ID de votre propriété GA4
+        const propertyId = process.env.GA_PROPERTY_ID || null;
+
+        // 5. Requête à l'API GA4 pour obtenir les données des dernières 24 heures
+        // en utilisant fetch directement avec le token d'accès
+        const response = await fetch(
+          `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              dateRanges: [
+                {
+                  startDate: "5daysAgo",
+                  endDate: "yesterday",
+                },
+              ],
+              dimensions: [
+                {
+                  name: "sessionDefaultChannelGroup",
+                },
+              ],
+              metrics: [
+                {
+                  name: "sessions",
+                },
+              ],
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Erreur API GA4 (${response.status}): ${errorText}`);
+        }
+
+        // 6. Récupérer les données
+        const data: GA4Data = await response.json();
+
+        // 7. Extraire les statistiques
+        if (data.rows) {
+          data.rows.forEach((row: GA4Row) => {
+            const channel = row.dimensionValues[0].value;
+            const sessions = parseInt(row.metricValues[0].value);
+
+            totalSessions += sessions;
+
+            if (channel === "Organic Search") {
+              organicSessions = sessions;
+            }
+          });
+        }
+      } catch (apiError) {
+        console.error(
+          "Erreur lors de la récupération des données GA4:",
+          apiError
+        );
+        throw new Error(
+          `Erreur API GA4: ${
+            apiError instanceof Error ? apiError.message : String(apiError)
+          }`
+        );
       }
     }
 
-    // 10. Préparer l'email selon les résultats
+    // 8. Préparer l'email selon les résultats
     let emailSubject, emailContent;
 
     // Si trafic organique > 1, c'est un rapport normal
     const hasOrganic = organicSessions > 1;
 
+    // Votre code pour générer les emails reste inchangé
     if (hasOrganic) {
       emailSubject = `📊 Rapport GA4 quotidien - ${new Date().toLocaleDateString()}`;
       emailContent = `
@@ -150,15 +153,6 @@ export async function GET(req: Request) {
             </ul>
             <p>Statut du tracking: <strong style="color: #2e7d32">✓ Opérationnel</strong></p>
           </div>
-          
-          <p>Tout semble fonctionner correctement. Si vous souhaitez analyser plus en détail vos données:</p>
-          <ul>
-            <li>Consultez votre tableau de bord Google Analytics</li>
-            <li>Vérifiez les performances de vos campagnes marketing</li>
-          </ul>
-          
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666;">
-            <p>Cette notification est générée automatiquement par votre système de monitoring GA4.</p>
             ${
               isTestMode
                 ? "<p><strong>Ceci est un test</strong> - Aucun problème réel n'a été détecté.</p>"
@@ -202,7 +196,7 @@ export async function GET(req: Request) {
       `;
     }
 
-    // Envoyer l'email seulement si ce n'est pas un test ou si envoi de test explicitement demandé
+    // Envoyer l'email (code inchangé)
     const sendTestEmail = url.searchParams.get("sendEmail") === "true";
     let emailSent = false;
 
@@ -219,7 +213,6 @@ export async function GET(req: Request) {
         console.log(`Email envoyé à ${emailTo}`);
       } catch (emailError) {
         console.error("Erreur lors de l'envoi de l'email:", emailError);
-        // On continue le processus même si l'email échoue
       }
     } else if (!resend && (sendTestEmail || !isTestMode)) {
       console.log(
