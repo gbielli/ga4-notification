@@ -63,7 +63,7 @@ export async function GET(req: Request) {
         const accessToken = token.access_token;
 
         // 4. ID de votre propriété GA4
-        const propertyId = process.env.GA_PROPERTY_ID || null;
+        const propertyId = process.env.GA_PROPERTY_ID || "470974790";
 
         // 5. Requête à l'API GA4 pour obtenir les données des dernières 24 heures
         // en utilisant fetch directement avec le token d'accès
